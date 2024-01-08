@@ -1,12 +1,10 @@
 import 'package:flutter/material.dart';
-import 'package:encrypted_shared_preferences/encrypted_shared_preferences.dart';
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert' as convert;
 import 'car_app.dart';
 
-const String _baseURL = 'https://amrosite.000webhostapp.com';
-EncryptedSharedPreferences _encryptedData = EncryptedSharedPreferences();
+const String _baseURL = 'car-photo.000webhostapp.com';
 
 class AddCategory extends StatefulWidget {
   const AddCategory({Key? key}) : super(key: key);
@@ -17,8 +15,8 @@ class AddCategory extends StatefulWidget {
 
 class _AddCategoryState extends State<AddCategory> {
   final GlobalKey<FormState> _formKey = GlobalKey<FormState>();
-  TextEditingController _controllerID = TextEditingController();
-  TextEditingController _controllerName = TextEditingController();
+  final TextEditingController _controllerID = TextEditingController();
+  final TextEditingController _controllerName = TextEditingController();
   bool _loading = false;
   bool _submissionSuccessful = false;
 
@@ -29,11 +27,15 @@ class _AddCategoryState extends State<AddCategory> {
     super.dispose();
   }
 
-  void update(String text, {bool successful = false}) {
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
+  void update(bool success) {
     setState(() {
+      if(success) {
+        _submissionSuccessful = true;
+      }
+      else {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Connection error!")));
+      }
       _loading = false;
-      _submissionSuccessful = successful;
     });
   }
 
@@ -45,6 +47,7 @@ class _AddCategoryState extends State<AddCategory> {
       ),
       body: Center(
         child: Form(
+          autovalidateMode: AutovalidateMode.onUserInteraction,
           key: _formKey,
           child: Column(children:<Widget> [
             const SizedBox(height: 10),
@@ -84,9 +87,9 @@ class _AddCategoryState extends State<AddCategory> {
                   setState(() {
                     _loading = true;
                   });
-                  saveCategory(
-                        (text) {
-                      update(text, successful: true);
+                  saveInformation(
+                        (success) {
+                      update(success);
                     },
                     int.parse(_controllerID.text.toString()),
                     _controllerName.text.toString(),
@@ -121,39 +124,31 @@ class _AddCategoryState extends State<AddCategory> {
   }
 }
 
-void saveCategory(Function(String text) update, int cid, String name) async {
+void saveInformation(Function(bool) update, int id, String name) async {
   try {
-    // we need to first retrieve and decrypt the key
-    String myKey = await _encryptedData.getString('myKey');
     // send a JSON object using http post
+    final url = Uri.https(_baseURL, "save.php");
     final response = await http.post(
-        Uri.parse('$_baseURL/rabia/save.php'),
-        headers: <String, String>{
-          'Content-Type': 'application/json; charset=UTF-8',
-        }, // convert the cid, name and key to a JSON object
-        body: convert.jsonEncode(<String, String>{
-          'cid': '$cid', 'name': name, 'key': myKey
-        })).timeout(const Duration(seconds: 5));
+      url,
+      headers: <String, String>{
+        'Content-Type': 'application/json; charset=UTF-8',
+      },
+      body: convert.jsonEncode(<String, String>{
+        'id': '$id',
+        'name': name,
+      }),
+    ).timeout(const Duration(seconds: 5));
     if (response.statusCode == 200) {
       // if successful, call the update function
-      update(response.body);
+      final jsonResponse = convert.jsonDecode(response.body);
+      final found = jsonResponse['success'];
+      update(found);
+    }
+    else {
+      update(false);
     }
   }
   catch(e) {
-    update("connection error");
-  }
-}
-
-class AnotherScreen extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Another Screen'),
-      ),
-      body: const Center(
-        child: Text('This is another screen.'),
-      ),
-    );
+    update(false);
   }
 }
